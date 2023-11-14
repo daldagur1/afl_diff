@@ -1,0 +1,18 @@
+--- config_original.h	2020-01-08 04:20:26.000000000 +0900
++++ config.h	2023-04-16 04:33:38.000000000 +0900
+@@ -163,13 +163,13 @@
+    steps; past this point, the "extras/user" step will be still carried out,
+    but with proportionally lower odds: */
+ 
+-#define MAX_DET_EXTRAS      200
++#define MAX_DET_EXTRAS      4000
+ 
+ /* Maximum number of auto-extracted dictionary tokens to actually use in fuzzing
+    (first value), and to keep in memory as candidates. The latter should be much
+    higher than the former. */
+ 
+-#define USE_AUTO_EXTRAS     50
++#define USE_AUTO_EXTRAS     1000
+ #define MAX_AUTO_EXTRAS     (USE_AUTO_EXTRAS * 10)
+ 
+ /* Scaling factor for the effector map used to skip some of the more

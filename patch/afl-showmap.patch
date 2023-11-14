@@ -1,0 +1,120 @@
+--- afl-showmap_original.c	2020-01-08 04:20:26.000000000 +0900
++++ afl-showmap.c	2023-04-16 04:33:38.000000000 +0900
+@@ -45,6 +45,7 @@
+ #include <sys/stat.h>
+ #include <sys/types.h>
+ #include <sys/resource.h>
++#include <stdbool.h>
+ 
+ static s32 child_pid;                 /* PID of the tested program         */
+ 
+@@ -125,11 +126,33 @@
+ 
+ }
+ 
+-
++struct test_process_info {
++    int initialized;
++    int afl_id;
++    int port;
++    int reqr_process_id;
++    int process_id;
++    char error_type[20]; /* SQL, Command */
++    char error_msg[100];
++    bool capture;
++};
+ /* Get rid of shared memory (atexit handler). */
+ 
+ static void remove_shm(void) {
+-
++  if (getenv("AFL_META_INFO_ID")){
++        // clean up last shared memory area
++        int mem_key = atoi(getenv("AFL_META_INFO_ID"));
++        int witch_shm_id = shmget(mem_key , sizeof(struct test_process_info), 0666);
++
++        if (witch_shm_id  >= 0 ) {
++            struct test_process_info *afl_info = (struct test_process_info *) shmat(witch_shm_id, NULL, 0);  /* attach */
++            afl_info->afl_id = 0;
++            afl_info->capture = false;
++            fprintf(stderr, "\033[36m [Witcher] showmap init completed afl_shm_id=%d : afl_ifo %d %d %d %d !!!\033[0m\n",
++                    shm_id, mem_key, witch_shm_id, afl_info->afl_id, afl_info->capture);
++        }
++        fprintf(stderr, "\n");
++  }
+   shmctl(shm_id, IPC_RMID, NULL);
+ 
+ }
+@@ -141,7 +164,20 @@
+ 
+   u8* shm_str;
+ 
+-  shm_id = shmget(IPC_PRIVATE, MAP_SIZE, IPC_CREAT | IPC_EXCL | 0600);
++  shm_id = shmget(IPC_PRIVATE, MAP_SIZE, IPC_CREAT | IPC_EXCL | 0666);
++  char *port = getenv("TARGET_PORT");
++  if (port){
++  	  printf("target port: %s \n", port);
++      int port_id = atoi(port);
++      shmctl(port_id, IPC_RMID, NULL);
++      shm_id = shmget(port_id , MAP_SIZE, IPC_CREAT | 0666);
++
++      if (shm_id >= 0 ){
++        printf("Created shm!!!\n");
++      }
++  } else {
++      shm_id = shmget(shm_id, MAP_SIZE, IPC_CREAT | IPC_EXCL | 0666);
++  }
+ 
+   if (shm_id < 0) PFATAL("shmget() failed");
+ 
+@@ -154,7 +190,28 @@
+   ck_free(shm_str);
+ 
+   trace_bits = shmat(shm_id, NULL, 0);
++//  trace_bits[0] = 2;
++//  trace_bits[65535] = 3;
++  if (getenv("AFL_META_INFO_ID")){
++      int mem_key = atoi(getenv("AFL_META_INFO_ID"));
++      int witch_shm_id = shmget(mem_key , sizeof(struct test_process_info), 0666);
++      if (witch_shm_id  >= 0 ) {
++            struct test_process_info *afl_info = (struct test_process_info *) shmat(witch_shm_id, NULL, 0);  /* attach */
++            printf("showmap: AFL_META_INFO_ID=%s, witcher_shm_id=%d, %s=%d, info=> afl_id=%d capture=%d \n", getenv("AFL_META_INFO_ID"),witch_shm_id,
++             SHM_ENV_VAR, shm_id, afl_info->afl_id, afl_info->capture);
++      } else {
++        printf("Could not access witcher shared memory!!!\n");
++        exit(33);
++      }
++
++  } else {
++      printf("showmap: AFL_META_INFO_ID not set , %s = %x \n", SHM_ENV_VAR, shm_id);
++  }
++  printf("showmap: trace_bits = %p\n", trace_bits);
+   
++  //printf("trace_bits[0] = %d, [65535]=%d\n", trace_bits[0], trace_bits[65535]);
++
++
+   if (!trace_bits) PFATAL("shmat() failed");
+ 
+ }
+@@ -275,11 +332,11 @@
+       r.rlim_max = r.rlim_cur = ((rlim_t)mem_limit) << 20;
+ 
+ #ifdef RLIMIT_AS
+-
++      printf("setting RLIMIT_AS %d \n", r);
+       setrlimit(RLIMIT_AS, &r); /* Ignore errors */
+ 
+ #else
+-
++      printf("setting RLIMIT_DATA\n");
+       setrlimit(RLIMIT_DATA, &r); /* Ignore errors */
+ 
+ #endif /* ^RLIMIT_AS */
+@@ -763,7 +820,7 @@
+     use_argv = get_qemu_argv(argv[0], argv + optind, argc - optind);
+   else
+     use_argv = argv + optind;
+-
++  
+   run_target(use_argv);
+ 
+   tcnt = write_results();
